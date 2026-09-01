@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Hash,
+  Edit3,
 } from 'lucide-react';
 
 interface RecordDetailModalProps {
@@ -169,7 +170,7 @@ export const RecordDetailModal: React.FC<RecordDetailModalProps> = ({
         </div>
 
         {/* Modal Footer Actions */}
-        <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <button
               id="modal-copy-btn"
@@ -188,6 +189,22 @@ export const RecordDetailModal: React.FC<RecordDetailModalProps> = ({
                 </>
               )}
             </button>
+
+            {onProposeUpdate && (
+              <button
+                id="modal-propose-update-btn"
+                type="button"
+                onClick={() => {
+                  onProposeUpdate(record);
+                  onClose();
+                }}
+                className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-bold border border-amber-300 flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                title="Suggest corrections or updated details for this identifier to Admin for approval"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-amber-700" />
+                <span>Suggest Correction / Update</span>
+              </button>
+            )}
           </div>
 
           <button

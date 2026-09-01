@@ -33,7 +33,7 @@ service cloud.firestore {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Schema Validation Blueprint for Hunter Identifier Manual Records
+    // Schema Validation Blueprint for Hunter Identifier Manual Records & Submissions
     function isValidManualRecord(data) {
       return data.hunterId is string &&
              data.hunterId.size() > 0 &&
@@ -48,11 +48,15 @@ service cloud.firestore {
              (!('accountNumber' in data) || (data.accountNumber is string && data.accountNumber.size() <= 100)) &&
              (!('mobile' in data) || (data.mobile is string && data.mobile.size() <= 50)) &&
              (!('pan' in data) || (data.pan is string && data.pan.size() <= 50)) &&
+             (!('orgType' in data) || (data.orgType is string && data.orgType.size() <= 50)) &&
              (!('createdBy' in data) || (data.createdBy is string && data.createdBy.size() <= 200)) &&
              (!('approvalStatus' in data) || (data.approvalStatus in ['pending', 'approved', 'rejected'])) &&
              (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 2000)) &&
              (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
-             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
+             (!('submittedAt' in data) || (data.submittedAt is string && data.submittedAt.size() <= 100)) &&
+             (!('isUpdateRequest' in data) || (data.isUpdateRequest is bool)) &&
+             (!('targetRecordId' in data) || (data.targetRecordId is string && data.targetRecordId.size() <= 128));
     }
 
     // Schema Validation Blueprint for CSV Dataset Metadata
@@ -76,48 +80,48 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------------
-    // 1. Manual Hunter Reference Records (/manual_identifiers/{recordId} & /manual_records/{recordId})
-    // - Authenticated normal users CAN read (get & list) Hunter records.
-    // - Normal authenticated users CAN submit records with approvalStatus == "pending".
-    // - ONLY authenticated Admin users with role == "admin" can approve, update, or delete.
+    // 1. Manual Hunter Reference Records & Submissions Queue
+    // - Public / Normal users CAN read (get & list) approved records and active datasets.
+    // - Public / Normal users CAN submit new identifier proposals or update requests with approvalStatus == "pending".
+    // - ONLY authenticated Admin users can approve, update, or delete records.
     // -------------------------------------------------------------------------
     match /manual_identifiers/{recordId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(recordId) && isValidManualRecord(request.resource.data) &&
-                      (isAdmin() || request.resource.data.approvalStatus == 'pending');
+      allow get, list: if true;
+      allow create: if isValidId(recordId) && (
+                      (request.resource.data.approvalStatus == 'pending' && isValidManualRecord(request.resource.data)) ||
+                      (isAdmin() && isValidManualRecord(request.resource.data))
+                    );
       allow update: if isAdmin() && isValidId(recordId) && isValidManualRecord(request.resource.data);
       allow delete: if isAdmin() && isValidId(recordId);
     }
 
     match /manual_records/{recordId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(recordId) && isValidManualRecord(request.resource.data) &&
-                      (isAdmin() || request.resource.data.approvalStatus == 'pending');
+      allow get, list: if true;
+      allow create: if isValidId(recordId) && (
+                      (request.resource.data.approvalStatus == 'pending' && isValidManualRecord(request.resource.data)) ||
+                      (isAdmin() && isValidManualRecord(request.resource.data))
+                    );
       allow update: if isAdmin() && isValidId(recordId) && isValidManualRecord(request.resource.data);
       allow delete: if isAdmin() && isValidId(recordId);
     }
 
     match /hunter_records/{recordId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin() && isValidId(recordId);
-      allow update: if isAdmin() && isValidId(recordId);
-      allow delete: if isAdmin() && isValidId(recordId);
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin() && isValidId(recordId);
     }
 
     // -------------------------------------------------------------------------
     // 2. Central Reference CSV Datasets & Metadata (/csv_metadata/{docId} & /csv_datasets/{datasetId})
-    // - Authenticated users can read the active dataset.
+    // - Public can read the active dataset.
     // - ONLY authenticated Admins can upload, replace, or delete reference datasets.
     // -------------------------------------------------------------------------
     match /csv_metadata/{docId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin() && isValidId(docId);
-      allow update: if isAdmin() && isValidId(docId);
-      allow delete: if isAdmin() && isValidId(docId);
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin() && isValidId(docId);
     }
 
     match /csv_datasets/{datasetId} {
-      allow get, list: if isSignedIn();
+      allow get, list: if true;
       allow create: if isAdmin() && isValidId(datasetId) && isValidCSVDataset(request.resource.data);
       allow update: if isAdmin() && isValidId(datasetId) && isValidCSVDataset(request.resource.data);
       allow delete: if isAdmin() && isValidId(datasetId);
@@ -125,23 +129,21 @@ service cloud.firestore {
 
     // -------------------------------------------------------------------------
     // 3. Search History Audit Trail (/search_history/{historyId})
-    // - Authenticated users can create search history records and read recent logs.
+    // - Read and create search logs.
     // - ONLY Admins can delete history logs.
     // -------------------------------------------------------------------------
     match /search_history/{historyId} {
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(historyId) && isValidSearchHistory(request.resource.data);
-      allow update: if isAdmin() && isValidId(historyId);
-      allow delete: if isAdmin() && isValidId(historyId);
+      allow get, list: if true;
+      allow create: if isValidId(historyId) && isValidSearchHistory(request.resource.data);
+      allow update, delete: if isAdmin() && isValidId(historyId);
     }
 
     // -------------------------------------------------------------------------
     // 4. Visitor Statistics Counters (/visitor_stats/{statId})
-    // - Authenticated users can read and increment visit statistics.
     // -------------------------------------------------------------------------
     match /visitor_stats/{statId} {
-      allow get, list: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidId(statId);
+      allow get, list: if true;
+      allow create, update: if isValidId(statId);
       allow delete: if isAdmin() && isValidId(statId);
     }
 
@@ -165,7 +167,7 @@ service cloud.firestore {
     // - ONLY Admins can write or modify admin designations.
     // -------------------------------------------------------------------------
     match /admins/{adminId} {
-      allow get: if isSignedIn();
+      allow get: if true;
       allow list, create, update, delete: if isAdmin();
     }
   }

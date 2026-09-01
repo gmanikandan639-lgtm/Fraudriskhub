@@ -19,6 +19,7 @@ import {
   ChevronRight,
   ShieldCheck,
   FileSearch,
+  Edit3,
 } from 'lucide-react';
 
 interface ResultsPanelProps {
@@ -29,6 +30,7 @@ interface ResultsPanelProps {
   csvMetadata: CSVMetadata;
   threshold: number;
   onSelectRecord: (record: RecordItem, score: number, matchedFields: any[]) => void;
+  onProposeUpdate?: (record: RecordItem) => void;
 }
 
 export const ResultsPanel: React.FC<ResultsPanelProps> = ({
@@ -39,6 +41,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
   csvMetadata,
   threshold,
   onSelectRecord,
+  onProposeUpdate,
 }) => {
   const [confidenceFilter, setConfidenceFilter] = useState<'ALL' | 'VERY_HIGH' | 'HIGH' | 'POSSIBLE'>('ALL');
   const [sortBy, setSortBy] = useState<'SCORE_DESC' | 'BANK_NAME' | 'REC_ID'>('SCORE_DESC');
@@ -303,18 +306,34 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
 
                         {/* Action Details */}
                         <td className="py-3.5 px-4 align-top text-right">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onSelectRecord(item.record, item.score, item.matchedFields);
-                            }}
-                            className="p-1.5 rounded-lg bg-slate-100 hover:bg-indigo-600 hover:text-white text-slate-600 transition-colors inline-flex items-center gap-1 text-[11px] font-semibold cursor-pointer"
-                            title="View Record Details"
-                          >
-                            <span>Details</span>
-                            <ChevronRight className="w-3 h-3" />
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            {onProposeUpdate && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onProposeUpdate(item.record);
+                                }}
+                                className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 transition-colors inline-flex items-center gap-1 text-[11px] font-bold cursor-pointer"
+                                title="Suggest corrections or update identifier details"
+                              >
+                                <Edit3 className="w-3 h-3 text-amber-700" />
+                                <span className="hidden xl:inline">Update</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectRecord(item.record, item.score, item.matchedFields);
+                              }}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-indigo-600 hover:text-white text-slate-600 transition-colors inline-flex items-center gap-1 text-[11px] font-semibold cursor-pointer"
+                              title="View Record Details"
+                            >
+                              <span>Details</span>
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

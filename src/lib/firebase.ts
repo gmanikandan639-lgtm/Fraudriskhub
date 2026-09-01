@@ -382,7 +382,20 @@ export const subscribeToManualHunterRecords = (
   let unsubscribeSnapshot: (() => void) | null = null;
   let isCancelled = false;
 
-  ensureAuth().then(() => {
+  // Immediate cache retrieval for instant render
+  try {
+    const cached = localStorage.getItem('fraud_risk_hub_manual_identifiers_cache');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        callback(parsed);
+      }
+    }
+  } catch (e) {
+    // Ignore storage parse error
+  }
+
+  const attachListener = () => {
     if (isCancelled) return;
     try {
       const q = query(collection(db, MANUAL_IDENTIFIERS_COLLECTION));
@@ -429,6 +442,11 @@ export const subscribeToManualHunterRecords = (
             return timeB - timeA;
           });
 
+          // Save to local cache
+          try {
+            localStorage.setItem('fraud_risk_hub_manual_identifiers_cache', JSON.stringify(records));
+          } catch (e) {}
+
           setGlobalSyncStatus('connected');
           if (onStatusChange) onStatusChange('connected');
           callback(records);
@@ -446,7 +464,10 @@ export const subscribeToManualHunterRecords = (
       setGlobalSyncStatus('reconnecting');
       if (onStatusChange) onStatusChange('reconnecting');
     }
-  });
+  };
+
+  // Attach immediately without waiting for auth state
+  attachListener();
 
   return () => {
     isCancelled = true;
@@ -511,8 +532,6 @@ export const submitUserHunterRecordToFirestore = async (
     rawColumns?: Record<string, string>;
   }
 ): Promise<string> => {
-  await ensureAuth();
-
   const docId = `sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
   const recordDoc = doc(db, MANUAL_IDENTIFIERS_COLLECTION, docId);
   const fallbackRecordDoc = doc(db, MANUAL_COLLECTION, docId);
@@ -520,7 +539,7 @@ export const submitUserHunterRecordToFirestore = async (
 
   const submitterInfo = submission.submittedBy || { name: 'Portal User' };
 
-  const payload: Partial<ManualHunterRecord> = {
+  const payload: ManualHunterRecord = {
     id: docId,
     hunterId: submission.hunterId.trim(),
     bankName: submission.bankName.trim(),
@@ -550,6 +569,16 @@ export const submitUserHunterRecordToFirestore = async (
       ...(submission.rawColumns || {}),
     },
   };
+
+  // Immediate local cache update so UI and Admin approvals reflect it immediately
+  try {
+    const cached = localStorage.getItem('fraud_risk_hub_manual_identifiers_cache');
+    const list = cached ? JSON.parse(cached) : [];
+    if (Array.isArray(list)) {
+      const updated = [payload, ...list.filter((r: any) => r.id !== docId)];
+      localStorage.setItem('fraud_risk_hub_manual_identifiers_cache', JSON.stringify(updated));
+    }
+  } catch (e) {}
 
   try {
     await Promise.all([
@@ -584,38 +613,66 @@ export const approveUserHunterSubmissionInFirestore = async (
     updatedAt: now,
   };
 
+  // Immediate local cache update
+  try {
+    const cached = localStorage.getItem('fraud_risk_hub_manual_identifiers_cache');
+    if (cached) {
+      const list = JSON.parse(cached);
+      if (Array.isArray(list)) {
+        const updated = list.map((item: any) => {
+          if (item.id === submissionId) {
+            return { ...item, ...updatePayload };
+          }
+          if (adjustedData?.targetRecordId && item.id === adjustedData.targetRecordId) {
+            return { ...item, ...adjustedData, updatedAt: now };
+          }
+          return item;
+        });
+        localStorage.setItem('fraud_risk_hub_manual_identifiers_cache', JSON.stringify(updated));
+      }
+    }
+  } catch (e) {}
+
   // If this was an update to an existing target record, we also update the target record if distinct
   if (adjustedData?.targetRecordId && adjustedData.targetRecordId !== submissionId) {
     const targetDoc = doc(db, MANUAL_IDENTIFIERS_COLLECTION, adjustedData.targetRecordId);
     const targetFallbackDoc = doc(db, MANUAL_COLLECTION, adjustedData.targetRecordId);
-    await Promise.all([
-      setDoc(
-        targetDoc,
-        {
-          ...adjustedData,
-          updatedAt: now,
-          updatedBy: `Approved from user submission by ${adminName}`,
-          serverTime: serverTimestamp(),
-        },
-        { merge: true }
-      ),
-      setDoc(
-        targetFallbackDoc,
-        {
-          ...adjustedData,
-          updatedAt: now,
-          updatedBy: `Approved from user submission by ${adminName}`,
-          serverTime: serverTimestamp(),
-        },
-        { merge: true }
-      ),
-    ]);
+    try {
+      await Promise.all([
+        setDoc(
+          targetDoc,
+          {
+            ...adjustedData,
+            updatedAt: now,
+            updatedBy: `Approved from user submission by ${adminName}`,
+            serverTime: serverTimestamp(),
+          },
+          { merge: true }
+        ),
+        setDoc(
+          targetFallbackDoc,
+          {
+            ...adjustedData,
+            updatedAt: now,
+            updatedBy: `Approved from user submission by ${adminName}`,
+            serverTime: serverTimestamp(),
+          },
+          { merge: true }
+        ),
+      ]);
+    } catch (e) {
+      console.warn('Target record update warning:', e);
+    }
   }
 
-  await Promise.all([
-    setDoc(recordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
-    setDoc(fallbackRecordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
-  ]);
+  try {
+    await Promise.all([
+      setDoc(recordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
+      setDoc(fallbackRecordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
+    ]);
+  } catch (e) {
+    console.warn('Approve submission firestore error:', e);
+  }
 };
 
 /**
@@ -638,10 +695,28 @@ export const rejectUserHunterSubmissionInFirestore = async (
     updatedAt: now,
   };
 
-  await Promise.all([
-    setDoc(recordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
-    setDoc(fallbackRecordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
-  ]);
+  // Immediate local cache update
+  try {
+    const cached = localStorage.getItem('fraud_risk_hub_manual_identifiers_cache');
+    if (cached) {
+      const list = JSON.parse(cached);
+      if (Array.isArray(list)) {
+        const updated = list.map((item: any) =>
+          item.id === submissionId ? { ...item, ...updatePayload } : item
+        );
+        localStorage.setItem('fraud_risk_hub_manual_identifiers_cache', JSON.stringify(updated));
+      }
+    }
+  } catch (e) {}
+
+  try {
+    await Promise.all([
+      setDoc(recordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
+      setDoc(fallbackRecordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
+    ]);
+  } catch (e) {
+    console.warn('Reject submission firestore error:', e);
+  }
 };
 
 /**

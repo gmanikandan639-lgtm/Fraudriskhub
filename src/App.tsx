@@ -1196,6 +1196,7 @@ export default function App() {
                 onSelectRecord={(record, score, matchedFields) =>
                   setSelectedRecord({ record, score, matchedFields })
                 }
+                onProposeUpdate={(rec) => handleOpenUserSubmit(rec, 'update')}
               />
             </div>
           </div>
