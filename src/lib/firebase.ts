@@ -364,38 +364,105 @@ export function handleFirestoreError(
 }
 
 /* ========================================================================= */
-/* 1. REAL-TIME MANUAL HUNTER RECORDS (FIRESTORE)                            */
+/* 1. REAL-TIME MANUAL HUNTER RECORDS & APPROVALS (FIRESTORE + SSE + BROADCAST) */
 /* ========================================================================= */
 
 const MANUAL_COLLECTION = 'manual_records';
 const MANUAL_IDENTIFIERS_COLLECTION = 'manual_identifiers';
 
 /**
- * Real-time listener for Admin Manual Hunter Identifiers.
- * Fires automatically whenever any Admin adds, edits, or deletes a record.
- * Instantly updates all connected users without requiring a browser refresh.
+ * Utility to strip undefined values recursively so Firestore never throws
+ * "Function setDoc() called with invalid data. Unsupported field value: undefined"
+ */
+export const cleanForFirestore = <T extends Record<string, any>>(obj: T): Record<string, any> => {
+  const result: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (val !== undefined) {
+      if (
+        val !== null &&
+        typeof val === 'object' &&
+        !Array.isArray(val) &&
+        !(val instanceof Date) &&
+        typeof (val as any)?.toMillis !== 'function'
+      ) {
+        result[key] = cleanForFirestore(val);
+      } else {
+        result[key] = val;
+      }
+    }
+  }
+  return result;
+};
+
+// Cross-tab broadcast channel for instantaneous zero-latency local sync
+const syncChannel =
+  typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined'
+    ? new BroadcastChannel('fraud_risk_hub_sync_channel')
+    : null;
+
+export const broadcastLocalUpdate = (records: ManualHunterRecord[]) => {
+  try {
+    localStorage.setItem('fraud_risk_hub_manual_identifiers_cache', JSON.stringify(records));
+  } catch (e) {}
+
+  try {
+    if (syncChannel) {
+      syncChannel.postMessage({ type: 'MANUAL_RECORDS_UPDATED', records, timestamp: Date.now() });
+    }
+  } catch (e) {}
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('hunter_manual_records_updated', { detail: { records } }));
+  }
+};
+
+/**
+ * Real-time listener for Admin Manual Hunter Identifiers & User Submissions Queue.
+ * Synchronizes across:
+ * 1. Cloud Firestore onSnapshot
+ * 2. Backend SSE Stream (/api/sse)
+ * 3. Browser BroadcastChannel & Local Storage Cache
  */
 export const subscribeToManualHunterRecords = (
   callback: (records: ManualHunterRecord[]) => void,
   onStatusChange?: (status: LiveSyncStatus) => void
 ) => {
   let unsubscribeSnapshot: (() => void) | null = null;
+  let eventSource: EventSource | null = null;
   let isCancelled = false;
 
-  // Immediate cache retrieval for instant render
+  let currentRecordsMap = new Map<string, ManualHunterRecord>();
+
+  const emitMergedRecords = () => {
+    const arr = Array.from(currentRecordsMap.values());
+    arr.sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.submittedAt || 0).getTime();
+      const timeB = new Date(b.createdAt || b.submittedAt || 0).getTime();
+      return timeB - timeA;
+    });
+    try {
+      localStorage.setItem('fraud_risk_hub_manual_identifiers_cache', JSON.stringify(arr));
+    } catch (e) {}
+    callback(arr);
+  };
+
+  // 1. Immediate cache retrieval
   try {
     const cached = localStorage.getItem('fraud_risk_hub_manual_identifiers_cache');
     if (cached) {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        callback(parsed);
+        parsed.forEach((r: ManualHunterRecord) => {
+          if (r.id) currentRecordsMap.set(r.id, r);
+        });
+        emitMergedRecords();
       }
     }
-  } catch (e) {
-    // Ignore storage parse error
-  }
+  } catch (e) {}
 
-  const attachListener = () => {
+  // 2. Attach Firestore Real-Time Listener
+  const attachFirestoreListener = () => {
     if (isCancelled) return;
     try {
       const q = query(collection(db, MANUAL_IDENTIFIERS_COLLECTION));
@@ -403,10 +470,9 @@ export const subscribeToManualHunterRecords = (
         q,
         { includeMetadataChanges: true },
         (snapshot) => {
-          const records: ManualHunterRecord[] = [];
           snapshot.forEach((docSnap) => {
             const data = docSnap.data();
-            records.push({
+            const rec: ManualHunterRecord = {
               id: docSnap.id,
               hunterId: data.hunterId || '',
               bankName: data.bankName || '',
@@ -417,11 +483,12 @@ export const subscribeToManualHunterRecords = (
               accountNumber: data.accountNumber || '',
               mobile: data.mobile || '',
               pan: data.pan || '',
-              createdBy: data.createdBy || (data.submittedBy?.name ? `User: ${data.submittedBy.name}` : 'Administrator'),
+              createdBy:
+                data.createdBy ||
+                (data.submittedBy?.name ? `User: ${data.submittedBy.name}` : 'Administrator'),
               createdAt: data.createdAt || new Date().toISOString(),
               updatedAt: data.updatedAt || new Date().toISOString(),
               rawColumns: data.rawColumns || {},
-              // Approval fields
               orgType: data.orgType || 'Bank',
               approvalStatus: data.approvalStatus || 'approved',
               submittedBy: data.submittedBy || undefined,
@@ -429,27 +496,16 @@ export const subscribeToManualHunterRecords = (
               reviewedBy: data.reviewedBy || undefined,
               reviewedAt: data.reviewedAt || undefined,
               rejectionReason: data.rejectionReason || undefined,
-              isUpdateRequest: data.isUpdateRequest || false,
+              isUpdateRequest: Boolean(data.isUpdateRequest),
               targetRecordId: data.targetRecordId || undefined,
               previousRecordSnapshot: data.previousRecordSnapshot || undefined,
-            });
+            };
+            currentRecordsMap.set(docSnap.id, rec);
           });
-
-          // Sort by createdAt descending
-          records.sort((a, b) => {
-            const timeA = new Date(a.createdAt || 0).getTime();
-            const timeB = new Date(b.createdAt || 0).getTime();
-            return timeB - timeA;
-          });
-
-          // Save to local cache
-          try {
-            localStorage.setItem('fraud_risk_hub_manual_identifiers_cache', JSON.stringify(records));
-          } catch (e) {}
 
           setGlobalSyncStatus('connected');
           if (onStatusChange) onStatusChange('connected');
-          callback(records);
+          emitMergedRecords();
         },
         (error) => {
           if (error.code !== 'permission-denied') {
@@ -466,13 +522,127 @@ export const subscribeToManualHunterRecords = (
     }
   };
 
-  // Attach immediately without waiting for auth state
-  attachListener();
+  attachFirestoreListener();
+
+  // 3. Connect to Server-Sent Events (SSE) for multi-client push
+  try {
+    if (typeof window !== 'undefined' && typeof EventSource !== 'undefined') {
+      eventSource = new EventSource('/api/sse');
+
+      eventSource.addEventListener('submission_added', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload.submission && payload.submission.id) {
+            currentRecordsMap.set(payload.submission.id, payload.submission);
+            emitMergedRecords();
+          }
+        } catch (err) {}
+      });
+
+      eventSource.addEventListener('submission_approved', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload.approvedRecord && payload.approvedRecord.id) {
+            currentRecordsMap.set(payload.approvedRecord.id, payload.approvedRecord);
+            emitMergedRecords();
+          }
+        } catch (err) {}
+      });
+
+      eventSource.addEventListener('submission_rejected', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload.submissionId && currentRecordsMap.has(payload.submissionId)) {
+            const existing = currentRecordsMap.get(payload.submissionId)!;
+            currentRecordsMap.set(payload.submissionId, {
+              ...existing,
+              approvalStatus: 'rejected',
+              rejectionReason: payload.rejectionReason,
+            });
+            emitMergedRecords();
+          }
+        } catch (err) {}
+      });
+
+      eventSource.addEventListener('record_added', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload.record && payload.record.id) {
+            currentRecordsMap.set(payload.record.id, payload.record);
+            emitMergedRecords();
+          }
+        } catch (err) {}
+      });
+
+      eventSource.addEventListener('record_deleted', (e: MessageEvent) => {
+        try {
+          const payload = JSON.parse(e.data);
+          if (payload.deletedId && currentRecordsMap.has(payload.deletedId)) {
+            currentRecordsMap.delete(payload.deletedId);
+            emitMergedRecords();
+          }
+        } catch (err) {}
+      });
+    }
+  } catch (e) {}
+
+  // 4. Cross-tab Broadcast Channel listener
+  const handleBroadcastMessage = (event: MessageEvent) => {
+    if (event.data?.type === 'MANUAL_RECORDS_UPDATED' && Array.isArray(event.data?.records)) {
+      event.data.records.forEach((r: ManualHunterRecord) => {
+        if (r.id) currentRecordsMap.set(r.id, r);
+      });
+      emitMergedRecords();
+    }
+  };
+
+  if (syncChannel) {
+    syncChannel.addEventListener('message', handleBroadcastMessage);
+  }
+
+  // 5. Window Storage & Custom Event Listeners
+  const handleCustomEvent = (e: any) => {
+    if (Array.isArray(e.detail?.records)) {
+      e.detail.records.forEach((r: ManualHunterRecord) => {
+        if (r.id) currentRecordsMap.set(r.id, r);
+      });
+      emitMergedRecords();
+    }
+  };
+
+  const handleStorageEvent = (e: StorageEvent) => {
+    if (e.key === 'fraud_risk_hub_manual_identifiers_cache' && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((r: ManualHunterRecord) => {
+            if (r.id) currentRecordsMap.set(r.id, r);
+          });
+          emitMergedRecords();
+        }
+      } catch (err) {}
+    }
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('hunter_manual_records_updated', handleCustomEvent);
+    window.addEventListener('storage', handleStorageEvent);
+  }
 
   return () => {
     isCancelled = true;
     if (unsubscribeSnapshot) {
       unsubscribeSnapshot();
+    }
+    if (eventSource) {
+      eventSource.close();
+    }
+    if (syncChannel) {
+      syncChannel.removeEventListener('message', handleBroadcastMessage);
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('hunter_manual_records_updated', handleCustomEvent);
+      window.removeEventListener('storage', handleStorageEvent);
     }
   };
 };
@@ -496,9 +666,29 @@ export const addManualHunterRecordToFirestore = async (
     updatedAt: now,
   };
 
+  // Broadcast locally immediately
+  try {
+    const cached = localStorage.getItem('fraud_risk_hub_manual_identifiers_cache');
+    const list = cached ? JSON.parse(cached) : [];
+    if (Array.isArray(list)) {
+      const updated = [payload, ...list.filter((r: any) => r.id !== docId)];
+      broadcastLocalUpdate(updated);
+    }
+  } catch (e) {}
+
+  // Server API backup
+  try {
+    fetch('/api/manual-records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  } catch (e) {}
+
+  const cleanData = cleanForFirestore({ ...payload, serverTime: serverTimestamp() });
   await Promise.all([
-    setDoc(recordDoc, { ...payload, serverTime: serverTimestamp() }, { merge: true }),
-    setDoc(fallbackRecordDoc, { ...payload, serverTime: serverTimestamp() }, { merge: true }),
+    setDoc(recordDoc, cleanData, { merge: true }),
+    setDoc(fallbackRecordDoc, cleanData, { merge: true }),
   ]);
 
   return docId;
@@ -550,7 +740,7 @@ export const submitUserHunterRecordToFirestore = async (
     notes: submission.notes?.trim() || '',
     accountNumber: submission.accountNumber?.trim() || '',
     mobile: submission.mobile?.trim() || '',
-    pan: submission.pan?.trim() || '',
+    pan: (submission.pan?.trim() || '').toUpperCase(),
     createdBy: `User: ${submitterInfo.name || 'Anonymous'}`,
     createdAt: now,
     updatedAt: now,
@@ -570,23 +760,34 @@ export const submitUserHunterRecordToFirestore = async (
     },
   };
 
-  // Immediate local cache update so UI and Admin approvals reflect it immediately
+  // Immediate multi-channel broadcast
   try {
     const cached = localStorage.getItem('fraud_risk_hub_manual_identifiers_cache');
     const list = cached ? JSON.parse(cached) : [];
     if (Array.isArray(list)) {
       const updated = [payload, ...list.filter((r: any) => r.id !== docId)];
-      localStorage.setItem('fraud_risk_hub_manual_identifiers_cache', JSON.stringify(updated));
+      broadcastLocalUpdate(updated);
     }
   } catch (e) {}
 
+  // Server API registration and SSE push
   try {
+    fetch('/api/submissions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
+  } catch (e) {}
+
+  // Cloud Firestore Persistence
+  try {
+    const cleanData = cleanForFirestore({ ...payload, serverTime: serverTimestamp() });
     await Promise.all([
-      setDoc(recordDoc, { ...payload, serverTime: serverTimestamp() }, { merge: true }),
-      setDoc(fallbackRecordDoc, { ...payload, serverTime: serverTimestamp() }, { merge: true }),
+      setDoc(recordDoc, cleanData, { merge: true }),
+      setDoc(fallbackRecordDoc, cleanData, { merge: true }),
     ]);
   } catch (err) {
-    console.warn('Firestore write warning (local fallback active):', err);
+    console.warn('Firestore write warning:', err);
   }
 
   return docId;
@@ -613,7 +814,7 @@ export const approveUserHunterSubmissionInFirestore = async (
     updatedAt: now,
   };
 
-  // Immediate local cache update
+  // Immediate multi-tab update
   try {
     const cached = localStorage.getItem('fraud_risk_hub_manual_identifiers_cache');
     if (cached) {
@@ -628,37 +829,34 @@ export const approveUserHunterSubmissionInFirestore = async (
           }
           return item;
         });
-        localStorage.setItem('fraud_risk_hub_manual_identifiers_cache', JSON.stringify(updated));
+        broadcastLocalUpdate(updated);
       }
     }
   } catch (e) {}
 
-  // If this was an update to an existing target record, we also update the target record if distinct
+  // Server API call
+  try {
+    fetch(`/api/submissions/${encodeURIComponent(submissionId)}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminName, adjustedData }),
+    }).catch(() => {});
+  } catch (e) {}
+
+  // If this was an update to an existing target record, update the target record in Firestore too
   if (adjustedData?.targetRecordId && adjustedData.targetRecordId !== submissionId) {
     const targetDoc = doc(db, MANUAL_IDENTIFIERS_COLLECTION, adjustedData.targetRecordId);
     const targetFallbackDoc = doc(db, MANUAL_COLLECTION, adjustedData.targetRecordId);
     try {
+      const targetPayload = cleanForFirestore({
+        ...adjustedData,
+        updatedAt: now,
+        updatedBy: `Approved from user submission by ${adminName}`,
+        serverTime: serverTimestamp(),
+      });
       await Promise.all([
-        setDoc(
-          targetDoc,
-          {
-            ...adjustedData,
-            updatedAt: now,
-            updatedBy: `Approved from user submission by ${adminName}`,
-            serverTime: serverTimestamp(),
-          },
-          { merge: true }
-        ),
-        setDoc(
-          targetFallbackDoc,
-          {
-            ...adjustedData,
-            updatedAt: now,
-            updatedBy: `Approved from user submission by ${adminName}`,
-            serverTime: serverTimestamp(),
-          },
-          { merge: true }
-        ),
+        setDoc(targetDoc, targetPayload, { merge: true }),
+        setDoc(targetFallbackDoc, targetPayload, { merge: true }),
       ]);
     } catch (e) {
       console.warn('Target record update warning:', e);
@@ -666,9 +864,10 @@ export const approveUserHunterSubmissionInFirestore = async (
   }
 
   try {
+    const cleanUpdate = cleanForFirestore({ ...updatePayload, serverTime: serverTimestamp() });
     await Promise.all([
-      setDoc(recordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
-      setDoc(fallbackRecordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
+      setDoc(recordDoc, cleanUpdate, { merge: true }),
+      setDoc(fallbackRecordDoc, cleanUpdate, { merge: true }),
     ]);
   } catch (e) {
     console.warn('Approve submission firestore error:', e);
@@ -695,7 +894,7 @@ export const rejectUserHunterSubmissionInFirestore = async (
     updatedAt: now,
   };
 
-  // Immediate local cache update
+  // Immediate multi-channel broadcast
   try {
     const cached = localStorage.getItem('fraud_risk_hub_manual_identifiers_cache');
     if (cached) {
@@ -704,15 +903,25 @@ export const rejectUserHunterSubmissionInFirestore = async (
         const updated = list.map((item: any) =>
           item.id === submissionId ? { ...item, ...updatePayload } : item
         );
-        localStorage.setItem('fraud_risk_hub_manual_identifiers_cache', JSON.stringify(updated));
+        broadcastLocalUpdate(updated);
       }
     }
   } catch (e) {}
 
+  // Server API call
   try {
+    fetch(`/api/submissions/${encodeURIComponent(submissionId)}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminName, rejectionReason }),
+    }).catch(() => {});
+  } catch (e) {}
+
+  try {
+    const cleanUpdate = cleanForFirestore({ ...updatePayload, serverTime: serverTimestamp() });
     await Promise.all([
-      setDoc(recordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
-      setDoc(fallbackRecordDoc, { ...updatePayload, serverTime: serverTimestamp() }, { merge: true }),
+      setDoc(recordDoc, cleanUpdate, { merge: true }),
+      setDoc(fallbackRecordDoc, cleanUpdate, { merge: true }),
     ]);
   } catch (e) {
     console.warn('Reject submission firestore error:', e);
@@ -730,12 +939,26 @@ export const updateManualHunterRecordInFirestore = async (
   const fallbackRecordDoc = doc(db, MANUAL_COLLECTION, recordId);
   const now = new Date().toISOString();
 
-  const payload = {
+  const payload = cleanForFirestore({
     ...data,
     id: recordId,
     updatedAt: now,
     serverTime: serverTimestamp(),
-  };
+  });
+
+  // Local update
+  try {
+    const cached = localStorage.getItem('fraud_risk_hub_manual_identifiers_cache');
+    if (cached) {
+      const list = JSON.parse(cached);
+      if (Array.isArray(list)) {
+        const updated = list.map((item: any) =>
+          item.id === recordId ? { ...item, ...data, updatedAt: now } : item
+        );
+        broadcastLocalUpdate(updated);
+      }
+    }
+  } catch (e) {}
 
   await Promise.all([
     setDoc(recordDoc, payload, { merge: true }),
@@ -751,6 +974,26 @@ export const deleteManualHunterRecordFromFirestore = async (
 ): Promise<void> => {
   const recordDoc = doc(db, MANUAL_IDENTIFIERS_COLLECTION, recordId);
   const fallbackRecordDoc = doc(db, MANUAL_COLLECTION, recordId);
+
+  // Local update
+  try {
+    const cached = localStorage.getItem('fraud_risk_hub_manual_identifiers_cache');
+    if (cached) {
+      const list = JSON.parse(cached);
+      if (Array.isArray(list)) {
+        const updated = list.filter((item: any) => item.id !== recordId);
+        broadcastLocalUpdate(updated);
+      }
+    }
+  } catch (e) {}
+
+  // Server API
+  try {
+    fetch(`/api/manual-records/${encodeURIComponent(recordId)}`, {
+      method: 'DELETE',
+    }).catch(() => {});
+  } catch (e) {}
+
   await Promise.all([
     deleteDoc(recordDoc),
     deleteDoc(fallbackRecordDoc),

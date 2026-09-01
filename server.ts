@@ -109,10 +109,25 @@ export interface CentralManualRecord {
   accountNumber?: string;
   mobile?: string;
   pan?: string;
+  orgType?: string;
   createdAt: string;
   createdBy: string;
   updatedAt?: string;
   updatedBy?: string;
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  submittedBy?: {
+    name: string;
+    email?: string;
+    department?: string;
+    notes?: string;
+  };
+  submittedAt?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  isUpdateRequest?: boolean;
+  targetRecordId?: string;
+  previousRecordSnapshot?: Record<string, any>;
   rawColumns?: Record<string, string>;
 }
 
@@ -369,6 +384,180 @@ app.delete('/api/manual-records/:id', (req, res) => {
     success: true,
     message: 'Hunter Identifier deleted successfully.',
     deletedRecord: deleted,
+  });
+});
+
+// 6. POST user submit new proposal or update (Public / Normal User Accessible)
+app.post('/api/submissions', (req, res) => {
+  const {
+    id,
+    hunterId,
+    bankName,
+    orgType,
+    name,
+    status,
+    remarks,
+    notes,
+    accountNumber,
+    mobile,
+    pan,
+    submittedBy,
+    isUpdateRequest,
+    targetRecordId,
+    previousRecordSnapshot,
+    rawColumns,
+  } = req.body || {};
+
+  const cleanHunterId = (hunterId || '').trim();
+  const cleanBankName = (bankName || '').trim();
+
+  if (!cleanHunterId) {
+    return res.status(400).json({ success: false, error: 'Hunter Identifier Number is required.' });
+  }
+  if (!cleanBankName) {
+    return res.status(400).json({ success: false, error: 'Bank / NBFC Name is required.' });
+  }
+
+  const docId = id || `sub-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+  const submitter = submittedBy || { name: 'Portal User' };
+
+  const newSubmission: CentralManualRecord = {
+    id: docId,
+    hunterId: cleanHunterId,
+    bankName: cleanBankName,
+    orgType: orgType || 'Bank',
+    name: (name || '').trim() || cleanHunterId,
+    status: (status || 'Pending Verification').trim(),
+    remarks: (remarks || notes || 'Submitted by user for verification.').trim(),
+    notes: (notes || remarks || '').trim(),
+    accountNumber: (accountNumber || '').trim(),
+    mobile: (mobile || '').trim(),
+    pan: (pan || '').trim().toUpperCase(),
+    createdBy: `User: ${submitter.name || 'Anonymous'}`,
+    createdAt: now,
+    updatedAt: now,
+    approvalStatus: 'pending',
+    submittedBy: submitter,
+    submittedAt: now,
+    isUpdateRequest: Boolean(isUpdateRequest),
+    targetRecordId: targetRecordId || undefined,
+    previousRecordSnapshot: previousRecordSnapshot || undefined,
+    rawColumns: rawColumns || {
+      'Hunter Identification Number': cleanHunterId,
+      'Bank-NBFC': orgType || 'Bank',
+      'Bank/NBFC Name': cleanBankName,
+      'Status': status || 'Pending Verification',
+      'Submitted By': submitter.name || 'User',
+    },
+  };
+
+  // Check if already in memory
+  const existingIdx = centralManualRecords.findIndex((r) => r.id === docId);
+  if (existingIdx >= 0) {
+    centralManualRecords[existingIdx] = newSubmission;
+  } else {
+    centralManualRecords.unshift(newSubmission);
+  }
+
+  // Real-time SSE push to all active sessions & Admin dashboard
+  broadcastManualRecords('submission_added', {
+    submission: newSubmission,
+    records: centralManualRecords,
+    pendingCount: centralManualRecords.filter((r) => r.approvalStatus === 'pending').length,
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: 'Identifier submitted successfully for Admin review.',
+    submissionId: docId,
+    submission: newSubmission,
+  });
+});
+
+// 7. POST approve a submission (Admin Only)
+app.post('/api/submissions/:id/approve', (req, res) => {
+  const { id } = req.params;
+  const { adminName = 'Administrator', adjustedData } = req.body || {};
+
+  const idx = centralManualRecords.findIndex((r) => r.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: 'Submission not found.' });
+  }
+
+  const now = new Date().toISOString();
+  const existing = centralManualRecords[idx];
+  const approvedRecord: CentralManualRecord = {
+    ...existing,
+    ...(adjustedData || {}),
+    approvalStatus: 'approved',
+    reviewedBy: adminName,
+    reviewedAt: now,
+    updatedAt: now,
+  };
+
+  centralManualRecords[idx] = approvedRecord;
+
+  // If update request for another target record, update target record in memory
+  if (approvedRecord.targetRecordId && approvedRecord.targetRecordId !== id) {
+    const targetIdx = centralManualRecords.findIndex((r) => r.id === approvedRecord.targetRecordId);
+    if (targetIdx >= 0) {
+      centralManualRecords[targetIdx] = {
+        ...centralManualRecords[targetIdx],
+        ...(adjustedData || {}),
+        bankName: approvedRecord.bankName,
+        status: approvedRecord.status,
+        remarks: approvedRecord.remarks,
+        updatedAt: now,
+        updatedBy: `Approved from user update by ${adminName}`,
+      };
+    }
+  }
+
+  // Broadcast approved record
+  broadcastManualRecords('submission_approved', {
+    submissionId: id,
+    approvedRecord,
+    records: centralManualRecords,
+  });
+
+  return res.json({
+    success: true,
+    message: 'Submission approved and published live.',
+    record: approvedRecord,
+  });
+});
+
+// 8. POST reject a submission (Admin Only)
+app.post('/api/submissions/:id/reject', (req, res) => {
+  const { id } = req.params;
+  const { adminName = 'Administrator', rejectionReason = 'Does not meet verification criteria' } = req.body || {};
+
+  const idx = centralManualRecords.findIndex((r) => r.id === id);
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: 'Submission not found.' });
+  }
+
+  const now = new Date().toISOString();
+  centralManualRecords[idx] = {
+    ...centralManualRecords[idx],
+    approvalStatus: 'rejected',
+    reviewedBy: adminName,
+    reviewedAt: now,
+    rejectionReason,
+    updatedAt: now,
+  };
+
+  broadcastManualRecords('submission_rejected', {
+    submissionId: id,
+    rejectionReason,
+    records: centralManualRecords,
+  });
+
+  return res.json({
+    success: true,
+    message: 'Submission rejected.',
+    record: centralManualRecords[idx],
   });
 });
 

@@ -139,6 +139,7 @@ export interface ManualHunterRecord {
     accountNumber?: string;
     mobile?: string;
     pan?: string;
+    rawColumns?: Record<string, string>;
   };
 }
 

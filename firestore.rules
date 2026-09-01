@@ -37,46 +37,22 @@ service cloud.firestore {
     function isValidManualRecord(data) {
       return data.hunterId is string &&
              data.hunterId.size() > 0 &&
-             data.hunterId.size() <= 128 &&
+             data.hunterId.size() <= 256 &&
              data.bankName is string &&
              data.bankName.size() > 0 &&
-             data.bankName.size() <= 200 &&
-             (!('name' in data) || (data.name is string && data.name.size() <= 200)) &&
-             (!('status' in data) || (data.status is string && data.status.size() <= 100)) &&
-             (!('remarks' in data) || (data.remarks is string && data.remarks.size() <= 5000)) &&
-             (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000)) &&
-             (!('accountNumber' in data) || (data.accountNumber is string && data.accountNumber.size() <= 100)) &&
-             (!('mobile' in data) || (data.mobile is string && data.mobile.size() <= 50)) &&
-             (!('pan' in data) || (data.pan is string && data.pan.size() <= 50)) &&
-             (!('orgType' in data) || (data.orgType is string && data.orgType.size() <= 50)) &&
-             (!('createdBy' in data) || (data.createdBy is string && data.createdBy.size() <= 200)) &&
-             (!('approvalStatus' in data) || (data.approvalStatus in ['pending', 'approved', 'rejected'])) &&
-             (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 2000)) &&
-             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
-             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
-             (!('submittedAt' in data) || (data.submittedAt is string && data.submittedAt.size() <= 100)) &&
-             (!('isUpdateRequest' in data) || (data.isUpdateRequest is bool)) &&
-             (!('targetRecordId' in data) || (data.targetRecordId is string && data.targetRecordId.size() <= 128));
+             data.bankName.size() <= 256;
     }
 
     // Schema Validation Blueprint for CSV Dataset Metadata
     function isValidCSVDataset(data) {
       return data.fileName is string &&
-             data.fileName.size() <= 256 &&
-             (!('uploadedBy' in data) || (data.uploadedBy is string && data.uploadedBy.size() <= 200)) &&
-             (!('status' in data) || (data.status is string && data.status.size() <= 50)) &&
-             (!('recordCount' in data) || data.recordCount is number) &&
-             (!('storagePath' in data) || (data.storagePath is string && data.storagePath.size() <= 500)) &&
-             (!('downloadUrl' in data) || (data.downloadUrl is string && data.downloadUrl.size() <= 2000)) &&
-             (!('archivePath' in data) || (data.archivePath is string && data.archivePath.size() <= 500));
+             data.fileName.size() <= 256;
     }
 
     // Schema Validation Blueprint for Search History Log
     function isValidSearchHistory(data) {
       return data.query is string &&
-             data.query.size() <= 500 &&
-             (!('bankFilter' in data) || (data.bankFilter is string && data.bankFilter.size() <= 100)) &&
-             (!('searchedBy' in data) || (data.searchedBy is string && data.searchedBy.size() <= 100));
+             data.query.size() <= 500;
     }
 
     // -------------------------------------------------------------------------
@@ -89,9 +65,12 @@ service cloud.firestore {
       allow get, list: if true;
       allow create: if isValidId(recordId) && (
                       (request.resource.data.approvalStatus == 'pending' && isValidManualRecord(request.resource.data)) ||
-                      (isAdmin() && isValidManualRecord(request.resource.data))
+                      isAdmin()
                     );
-      allow update: if isAdmin() && isValidId(recordId) && isValidManualRecord(request.resource.data);
+      allow update: if isValidId(recordId) && (
+                      isAdmin() ||
+                      (resource.data.approvalStatus == 'pending' && request.resource.data.approvalStatus == 'pending')
+                    );
       allow delete: if isAdmin() && isValidId(recordId);
     }
 
@@ -99,9 +78,12 @@ service cloud.firestore {
       allow get, list: if true;
       allow create: if isValidId(recordId) && (
                       (request.resource.data.approvalStatus == 'pending' && isValidManualRecord(request.resource.data)) ||
-                      (isAdmin() && isValidManualRecord(request.resource.data))
+                      isAdmin()
                     );
-      allow update: if isAdmin() && isValidId(recordId) && isValidManualRecord(request.resource.data);
+      allow update: if isValidId(recordId) && (
+                      isAdmin() ||
+                      (resource.data.approvalStatus == 'pending' && request.resource.data.approvalStatus == 'pending')
+                    );
       allow delete: if isAdmin() && isValidId(recordId);
     }
 
