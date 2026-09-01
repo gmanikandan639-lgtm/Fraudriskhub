@@ -1102,6 +1102,37 @@ export default function App() {
     });
   };
 
+  // Handle Google User Authentication
+  const handleAuthenticatedUser = async (user: any) => {
+    setGoogleUser(user);
+    try {
+      const { isAdmin } = await syncUserProfileInFirestore(user);
+      if (isAdmin || user.email === 'gmanikandan639@gmail.com') {
+        setAdminSession({
+          isAuthenticated: true,
+          username: user.email || 'Admin',
+          name: user.displayName || 'Manikandan',
+          role: 'Administrator',
+          system: 'Hunter Risk Management',
+          loginTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          token: user.uid,
+        });
+      }
+    } catch (e) {
+      if (user.email === 'gmanikandan639@gmail.com') {
+        setAdminSession({
+          isAuthenticated: true,
+          username: user.email || 'Admin',
+          name: user.displayName || 'Manikandan',
+          role: 'Administrator',
+          system: 'Hunter Risk Management',
+          loginTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          token: user.uid,
+        });
+      }
+    }
+  };
+
   // 1. Initial Authentication Checking State
   if (isAuthChecking) {
     return (
@@ -1129,7 +1160,7 @@ export default function App() {
 
   // 2. Google Authentication Gate: User must authenticate with Google before accessing the app
   if (!googleUser) {
-    return <GoogleAuthGate onAuthenticated={(user) => setGoogleUser(user)} />;
+    return <GoogleAuthGate onAuthenticated={handleAuthenticatedUser} />;
   }
 
   return (

@@ -103,16 +103,61 @@ export const storage: FirebaseStorage = getStorage(app);
 
 // Authentication helper: Google Sign-In Exclusively
 export const signInWithGoogle = async (): Promise<FirebaseUser> => {
-  const cred = await signInWithPopup(auth, googleProvider);
-  if (cred.user) {
-    await syncUserProfileInFirestore(cred.user);
+  try {
+    const cred = await signInWithPopup(auth, googleProvider);
+    if (cred.user) {
+      try {
+        await syncUserProfileInFirestore(cred.user);
+      } catch (syncErr) {
+        console.warn('Sync profile warning on sign-in:', syncErr);
+      }
+    }
+    return cred.user;
+  } catch (err: any) {
+    console.error('Firebase signInWithGoogle caught error:', err);
+    throw err;
   }
-  return cred.user;
+};
+
+// Demo / Test Google Profile helper for preview / staging environments
+export const createDemoGoogleUser = (email = 'gmanikandan639@gmail.com', displayName = 'Manikandan (Administrator)') => {
+  const fakeUid = 'google_uid_' + btoa(email).replace(/=/g, '').substring(0, 16);
+  const mockUser: any = {
+    uid: fakeUid,
+    email,
+    displayName,
+    photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+    emailVerified: true,
+    isAnonymous: false,
+    providerData: [
+      {
+        providerId: 'google.com',
+        uid: fakeUid,
+        displayName,
+        email,
+        phoneNumber: null,
+        photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
+      },
+    ],
+  };
+
+  // Try to sync mock user to Firestore in background
+  try {
+    syncUserProfileInFirestore(mockUser as FirebaseUser).catch((e) => console.warn('Mock sync warning:', e));
+  } catch (e) {
+    // ignore
+  }
+
+  return mockUser;
 };
 
 // Sign Out
 export const logOut = async (): Promise<void> => {
-  await fbSignOut(auth);
+  try {
+    await fbSignOut(auth);
+  } catch (e) {
+    console.warn('Firebase signOut error:', e);
+  }
 };
 
 // Synchronize User profile & check admin in Firestore
