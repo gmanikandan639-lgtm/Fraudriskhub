@@ -3,6 +3,7 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import { getFirebaseAdminApp, getAdminAuth, verifyFirebaseToken, DEFAULT_FIREBASE_CONFIG } from './server/firebaseAdmin.js';
 
 dotenv.config();
 
@@ -31,8 +32,54 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     service: 'Hunter Search Backend',
     hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
+    firebaseProject: DEFAULT_FIREBASE_CONFIG.projectId,
+    serviceAccountEmail: DEFAULT_FIREBASE_CONFIG.clientEmail,
+    databaseURL: DEFAULT_FIREBASE_CONFIG.databaseURL,
     timestamp: new Date().toISOString(),
   });
+});
+
+// Firebase Admin Status & Token Verification
+app.get('/api/firebase/status', (req, res) => {
+  try {
+    const adminApp = getFirebaseAdminApp();
+    res.json({
+      status: 'active',
+      appName: adminApp.name,
+      projectId: adminApp.options.projectId || DEFAULT_FIREBASE_CONFIG.projectId,
+      serviceAccount: DEFAULT_FIREBASE_CONFIG.clientEmail,
+      databaseURL: adminApp.options.databaseURL || DEFAULT_FIREBASE_CONFIG.databaseURL,
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message || 'Firebase Admin error',
+    });
+  }
+});
+
+// Verify Firebase Auth Token
+app.post('/api/firebase/verify-token', async (req, res) => {
+  const { idToken } = req.body || {};
+  if (!idToken) {
+    return res.status(400).json({ error: 'idToken is required' });
+  }
+
+  try {
+    const decoded = await verifyFirebaseToken(idToken);
+    if (!decoded) {
+      return res.status(401).json({ valid: false, error: 'Invalid or expired token' });
+    }
+    return res.json({
+      valid: true,
+      uid: decoded.uid,
+      email: decoded.email,
+      name: decoded.name,
+      admin: decoded.admin || decoded.email === 'gmanikandan639@gmail.com',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ valid: false, error: err.message });
+  }
 });
 
 // Global unique visitor telemetry store

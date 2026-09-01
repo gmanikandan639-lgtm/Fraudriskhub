@@ -1,12 +1,12 @@
 {
-  "projectId": "winter-variety-mq6d2",
-  "appId": "1:463654405089:web:53c57716095f606497c8a0",
+  "projectId": "fraudriskhub-4639",
+  "appId": "1:44033047677:web:53c57716095f606497c8a0",
   "apiKey": "AIzaSyDGcPURwYhKIB8EFy1p0dLc2akd-sch6PQ",
-  "authDomain": "winter-variety-mq6d2.firebaseapp.com",
+  "authDomain": "fraudriskhub-4639.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-fraudriskhub-1bc1949c-52b4-459b-8fe4-430de62c4958",
-  "storageBucket": "winter-variety-mq6d2.firebasestorage.app",
-  "messagingSenderId": "463654405089",
+  "storageBucket": "fraudriskhub-4639.firebasestorage.app",
+  "messagingSenderId": "44033047677",
   "measurementId": "",
-  "oAuthClientId": "463654405089-qf4b046664f91suja85evclf74vhl4ft.apps.googleusercontent.com",
+  "oAuthClientId": "44033047677-qf4b046664f91suja85evclf74vhl4ft.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

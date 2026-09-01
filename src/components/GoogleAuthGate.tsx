@@ -280,7 +280,7 @@ export const GoogleAuthGate: React.FC<GoogleAuthGateProps> = ({ onAuthenticated 
                   <HelpCircle className="w-3 h-3" />
                   <span>{showTroubleshoot ? 'Hide Setup Help' : 'Firebase Setup Help'}</span>
                 </button>
-                <span className="text-[10px] text-slate-500">Project: winter-variety-mq6d2</span>
+                <span className="text-[10px] text-slate-500">Project: fraudriskhub-4639</span>
               </div>
             </div>
 
@@ -295,7 +295,7 @@ export const GoogleAuthGate: React.FC<GoogleAuthGateProps> = ({ onAuthenticated 
                   <li>
                     Open{' '}
                     <a
-                      href="https://console.firebase.google.com/project/winter-variety-mq6d2/authentication/providers"
+                      href="https://console.firebase.google.com/project/fraudriskhub-4639/authentication/providers"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-indigo-400 underline font-semibold"

@@ -46,11 +46,11 @@ export const firebaseConfig = {
   projectId:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) ||
     firebaseConfigJson.projectId ||
-    'winter-variety-mq6d2',
+    'fraudriskhub-4639',
   appId:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) ||
     firebaseConfigJson.appId ||
-    '1:463654405089:web:53c57716095f606497c8a0',
+    '1:44033047677:web:53c57716095f606497c8a0',
   apiKey:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) ||
     firebaseConfigJson.apiKey ||
@@ -58,15 +58,15 @@ export const firebaseConfig = {
   authDomain:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) ||
     firebaseConfigJson.authDomain ||
-    'winter-variety-mq6d2.firebaseapp.com',
+    'fraudriskhub-4639.firebaseapp.com',
   storageBucket:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) ||
     firebaseConfigJson.storageBucket ||
-    'winter-variety-mq6d2.firebasestorage.app',
+    'fraudriskhub-4639.firebasestorage.app',
   messagingSenderId:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) ||
     firebaseConfigJson.messagingSenderId ||
-    '463654405089',
+    '44033047677',
 };
 
 const customDatabaseId =
