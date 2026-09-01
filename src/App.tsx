@@ -444,7 +444,7 @@ export default function App() {
     triggerToast({
       type: 'info',
       title: 'Signed Out',
-      message: 'You have been signed out from Google.',
+      message: 'Exited Admin session. Public Hunter Search is active.',
     });
   };
 
@@ -1133,36 +1133,6 @@ export default function App() {
     }
   };
 
-  // 1. Initial Authentication Checking State
-  if (isAuthChecking) {
-    return (
-      <div
-        id="auth-loading-screen"
-        className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-100 selection:bg-red-600 selection:text-white"
-      >
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-900 border border-slate-700 shadow-2xl p-1 animate-pulse">
-            <img
-              src={BRAND.shieldIcon}
-              alt="Fraud Risk Hub"
-              className="w-full h-full object-cover rounded-xl"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-            <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-            <span>Verifying Google Authentication...</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // 2. Google Authentication Gate: User must authenticate with Google before accessing the app
-  if (!googleUser) {
-    return <GoogleAuthGate onAuthenticated={handleAuthenticatedUser} />;
-  }
-
   return (
     <div
       id="app-root"
@@ -1251,33 +1221,40 @@ export default function App() {
         )}
 
         {/* VIEW 4: ADMIN DASHBOARD (PROTECTED) */}
-        {activePage === 'admin' && adminSession?.isAuthenticated && (
-          <AdminDashboard
-            adminSession={adminSession}
-            csvMetadata={csvMetadata}
-            records={records}
-            manualRecords={manualRecords}
-            uniqueBanks={combinedUniqueBanks}
-            searchHistory={searchHistory}
-            onLogout={handleLogout}
-            onInitiateUpload={handleInitiateUpload}
-            onInitiateClearDatabase={handleInitiateClearDatabase}
-            onResetToDemo={handleResetToDemo}
-            onNavigateToPublic={() => setActivePage('search')}
-            onClearHistory={handleClearHistory}
-            onExportDataset={handleExportDataset}
-            defaultThreshold={defaultThreshold}
-            setDefaultThreshold={setDefaultThreshold}
-            onAddManualRecord={handleAddManualRecord}
-            onEditManualRecord={handleEditManualRecord}
-            onDeleteManualRecord={handleDeleteManualRecord}
-            onDeleteRecord={handleDeleteRecord}
-            onApproveSubmission={handleApproveSubmission}
-            onRejectSubmission={handleRejectSubmission}
-            visitorStats={visitorStats}
-            uploadProgress={uploadProgress}
-            isUploading={isUploading}
-          />
+        {activePage === 'admin' && (
+          adminSession?.isAuthenticated ? (
+            <AdminDashboard
+              adminSession={adminSession}
+              csvMetadata={csvMetadata}
+              records={records}
+              manualRecords={manualRecords}
+              uniqueBanks={combinedUniqueBanks}
+              searchHistory={searchHistory}
+              onLogout={handleLogout}
+              onInitiateUpload={handleInitiateUpload}
+              onInitiateClearDatabase={handleInitiateClearDatabase}
+              onResetToDemo={handleResetToDemo}
+              onNavigateToPublic={() => setActivePage('search')}
+              onClearHistory={handleClearHistory}
+              onExportDataset={handleExportDataset}
+              defaultThreshold={defaultThreshold}
+              setDefaultThreshold={setDefaultThreshold}
+              onAddManualRecord={handleAddManualRecord}
+              onEditManualRecord={handleEditManualRecord}
+              onDeleteManualRecord={handleDeleteManualRecord}
+              onDeleteRecord={handleDeleteRecord}
+              onApproveSubmission={handleApproveSubmission}
+              onRejectSubmission={handleRejectSubmission}
+              visitorStats={visitorStats}
+              uploadProgress={uploadProgress}
+              isUploading={isUploading}
+            />
+          ) : (
+            <AdminLogin
+              onLoginSuccess={handleLoginSuccess}
+              onCancel={() => setActivePage('search')}
+            />
+          )
         )}
       </main>
 
