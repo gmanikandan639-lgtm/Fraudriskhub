@@ -1,0 +1,39 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Default-deny all unlisted paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // Authentication helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Verified Admin helper function:
+    // Matches Firestore admin collections, user role document, or system administrator email
+    function isAdmin() {
+      return isSignedIn() && (
+        (firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+         firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email == 'gmanikandan639@gmail.com' && request.auth.token.email_verified == true)
+      );
+    }
+
+    // CSV Storage Folder Hierarchy:
+    // csv/
+    //   current/
+    //   archive/
+    match /csv/{folder}/{fileName} {
+      // Authenticated users can read current CSV files
+      allow read: if isSignedIn();
+      
+      // ONLY authenticated Admin users can upload, update, replace, or delete CSV files
+      allow write: if isAdmin() && (folder == 'current' || folder == 'archive')
+                   && (fileName.matches('.*\\.csv$') || request.resource.contentType.matches('text/.*|application/.*'));
+    }
+  }
+}

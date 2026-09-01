@@ -1,0 +1,127 @@
+{
+  "entities": {
+    "ManualRecord": {
+      "title": "ManualHunterRecord",
+      "description": "Manual Hunter reference identifier record created by verified Admins",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier record ID" },
+        "hunterId": { "type": "string", "description": "Hunter identifier number" },
+        "bankName": { "type": "string", "description": "Bank or NBFC institution name" },
+        "name": { "type": "string", "description": "Associated borrower or entity name" },
+        "status": { "type": "string", "description": "Risk match status (e.g., RCU_MATCH, Suspect Fraud)" },
+        "remarks": { "type": "string", "description": "Investigation remarks or notes" },
+        "notes": { "type": "string", "description": "Additional notes" },
+        "accountNumber": { "type": "string", "description": "Bank account number if applicable" },
+        "mobile": { "type": "string", "description": "Contact mobile number if applicable" },
+        "pan": { "type": "string", "description": "PAN card number if applicable" },
+        "createdBy": { "type": "string", "description": "Creator Administrator name or email" },
+        "createdAt": { "type": "string", "description": "Creation timestamp in ISO 8601 format" },
+        "updatedAt": { "type": "string", "description": "Last update timestamp in ISO 8601 format" },
+        "rawColumns": { "type": "object", "description": "Arbitrary metadata key-value attributes" }
+      },
+      "required": ["hunterId", "bankName"]
+    },
+    "CSVDataset": {
+      "title": "CSVDataset",
+      "description": "Active CSV Reference dataset and column mapping metadata",
+      "type": "object",
+      "properties": {
+        "fileName": { "type": "string", "description": "Reference CSV file name" },
+        "fileSize": { "type": "string", "description": "Human-readable file size" },
+        "uploadDate": { "type": "string", "description": "Formatted date of upload" },
+        "uploadedBy": { "type": "string", "description": "Admin who uploaded dataset" },
+        "recordCount": { "type": "number", "description": "Total record count in dataset" },
+        "columnCount": { "type": "number", "description": "Total columns count" },
+        "bankCount": { "type": "number", "description": "Total unique banking entities" },
+        "headers": { "type": "array", "description": "CSV column headers list" },
+        "status": { "type": "string", "description": "ACTIVE or EMPTY" },
+        "isDemo": { "type": "boolean", "description": "Whether active dataset is demo sample" },
+        "storagePath": { "type": "string", "description": "Firebase Cloud Storage current path (e.g. csv/current/file.csv)" },
+        "downloadUrl": { "type": "string", "description": "Firebase Cloud Storage secure access URL" },
+        "archivePath": { "type": "string", "description": "Firebase Cloud Storage archive location (e.g. csv/archive/file.csv)" },
+        "records": { "type": "array", "description": "Structured records collection" },
+        "updatedAt": { "type": "string", "description": "Last updated timestamp" }
+      },
+      "required": ["fileName", "status"]
+    },
+    "SearchHistory": {
+      "title": "SearchHistory",
+      "description": "Audit trail log of executed Hunter queries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Search log ID" },
+        "query": { "type": "string", "description": "Executed search query string" },
+        "bankFilter": { "type": "string", "description": "Selected institution filter" },
+        "threshold": { "type": "number", "description": "Similarity threshold score" },
+        "resultsCount": { "type": "number", "description": "Count of matched records" },
+        "timestamp": { "type": "string", "description": "Formatted timestamp" },
+        "searchedBy": { "type": "string", "description": "User identifier who executed the search" }
+      },
+      "required": ["query"]
+    },
+    "VisitorStats": {
+      "title": "VisitorStats",
+      "description": "Aggregated application visitor metrics and activity counts",
+      "type": "object",
+      "properties": {
+        "totalVisits": { "type": "number", "description": "Total cumulative visits" },
+        "todayVisits": { "type": "number", "description": "Visits recorded today" },
+        "uniqueSessions": { "type": "number", "description": "Distinct sessions count" },
+        "lastVisit": { "type": "string", "description": "Timestamp of most recent visit" }
+      }
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile with role-based access control (RBAC)",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "description": "User email address" },
+        "displayName": { "type": "string", "description": "User display name" },
+        "role": { "type": "string", "description": "User role (admin or user)", "enum": ["admin", "user"] },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "description": "Last modified timestamp" }
+      },
+      "required": ["role"]
+    }
+  },
+  "firestore": {
+    "/manual_identifiers/{recordId}": {
+      "schema": "ManualRecord",
+      "description": "Protected Hunter reference identifiers. Readable by authenticated users; writable ONLY by verified Admins with role=admin"
+    },
+    "/manual_records/{recordId}": {
+      "schema": "ManualRecord",
+      "description": "Protected Hunter reference identifiers. Readable by authenticated users; writable ONLY by verified Admins with role=admin"
+    },
+    "/hunter_records/{recordId}": {
+      "schema": "ManualRecord",
+      "description": "Structured Hunter individual reference records"
+    },
+    "/csv_metadata/{docId}": {
+      "schema": "CSVDataset",
+      "description": "Metadata for current and previous CSV datasets"
+    },
+    "/csv_datasets/{datasetId}": {
+      "schema": "CSVDataset",
+      "description": "Central reference datasets. Readable by authenticated users; writable ONLY by verified Admins"
+    },
+    "/search_history/{historyId}": {
+      "schema": "SearchHistory",
+      "description": "Audit trail logs for Hunter search executions"
+    },
+    "/visitor_stats/{statId}": {
+      "schema": "VisitorStats",
+      "description": "Global visitor metrics and session tracking counters"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User authentication profile with role definitions"
+    },
+    "/admins/{adminId}": {
+      "schema": "User",
+      "description": "Admin privileges registry"
+    }
+  }
+}

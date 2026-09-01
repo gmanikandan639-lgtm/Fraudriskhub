@@ -1,0 +1,172 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default-deny all unlisted paths to prevent unauthorized access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions for authentication and role verification
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Admin role verification:
+    // 1. Checks if the authenticated user has role == 'admin' in their /users/{userId} document
+    // 2. OR document exists in /admins/{userId}
+    // 3. OR verified administrator email matching system admin
+    function isAdmin() {
+      return isSignedIn() && (
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email == 'gmanikandan639@gmail.com' && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Schema Validation Blueprint for Hunter Identifier Manual Records
+    function isValidManualRecord(data) {
+      return data.hunterId is string &&
+             data.hunterId.size() > 0 &&
+             data.hunterId.size() <= 128 &&
+             data.bankName is string &&
+             data.bankName.size() > 0 &&
+             data.bankName.size() <= 200 &&
+             (!('name' in data) || (data.name is string && data.name.size() <= 200)) &&
+             (!('status' in data) || (data.status is string && data.status.size() <= 100)) &&
+             (!('remarks' in data) || (data.remarks is string && data.remarks.size() <= 5000)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 5000)) &&
+             (!('accountNumber' in data) || (data.accountNumber is string && data.accountNumber.size() <= 100)) &&
+             (!('mobile' in data) || (data.mobile is string && data.mobile.size() <= 50)) &&
+             (!('pan' in data) || (data.pan is string && data.pan.size() <= 50)) &&
+             (!('createdBy' in data) || (data.createdBy is string && data.createdBy.size() <= 200)) &&
+             (!('approvalStatus' in data) || (data.approvalStatus in ['pending', 'approved', 'rejected'])) &&
+             (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 2000)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
+    }
+
+    // Schema Validation Blueprint for CSV Dataset Metadata
+    function isValidCSVDataset(data) {
+      return data.fileName is string &&
+             data.fileName.size() <= 256 &&
+             (!('uploadedBy' in data) || (data.uploadedBy is string && data.uploadedBy.size() <= 200)) &&
+             (!('status' in data) || (data.status is string && data.status.size() <= 50)) &&
+             (!('recordCount' in data) || data.recordCount is number) &&
+             (!('storagePath' in data) || (data.storagePath is string && data.storagePath.size() <= 500)) &&
+             (!('downloadUrl' in data) || (data.downloadUrl is string && data.downloadUrl.size() <= 2000)) &&
+             (!('archivePath' in data) || (data.archivePath is string && data.archivePath.size() <= 500));
+    }
+
+    // Schema Validation Blueprint for Search History Log
+    function isValidSearchHistory(data) {
+      return data.query is string &&
+             data.query.size() <= 500 &&
+             (!('bankFilter' in data) || (data.bankFilter is string && data.bankFilter.size() <= 100)) &&
+             (!('searchedBy' in data) || (data.searchedBy is string && data.searchedBy.size() <= 100));
+    }
+
+    // -------------------------------------------------------------------------
+    // 1. Manual Hunter Reference Records (/manual_identifiers/{recordId} & /manual_records/{recordId})
+    // - Authenticated normal users CAN read (get & list) Hunter records.
+    // - Normal authenticated users CAN submit records with approvalStatus == "pending".
+    // - ONLY authenticated Admin users with role == "admin" can approve, update, or delete.
+    // -------------------------------------------------------------------------
+    match /manual_identifiers/{recordId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(recordId) && isValidManualRecord(request.resource.data) &&
+                      (isAdmin() || request.resource.data.approvalStatus == 'pending');
+      allow update: if isAdmin() && isValidId(recordId) && isValidManualRecord(request.resource.data);
+      allow delete: if isAdmin() && isValidId(recordId);
+    }
+
+    match /manual_records/{recordId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(recordId) && isValidManualRecord(request.resource.data) &&
+                      (isAdmin() || request.resource.data.approvalStatus == 'pending');
+      allow update: if isAdmin() && isValidId(recordId) && isValidManualRecord(request.resource.data);
+      allow delete: if isAdmin() && isValidId(recordId);
+    }
+
+    match /hunter_records/{recordId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() && isValidId(recordId);
+      allow update: if isAdmin() && isValidId(recordId);
+      allow delete: if isAdmin() && isValidId(recordId);
+    }
+
+    // -------------------------------------------------------------------------
+    // 2. Central Reference CSV Datasets & Metadata (/csv_metadata/{docId} & /csv_datasets/{datasetId})
+    // - Authenticated users can read the active dataset.
+    // - ONLY authenticated Admins can upload, replace, or delete reference datasets.
+    // -------------------------------------------------------------------------
+    match /csv_metadata/{docId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() && isValidId(docId);
+      allow update: if isAdmin() && isValidId(docId);
+      allow delete: if isAdmin() && isValidId(docId);
+    }
+
+    match /csv_datasets/{datasetId} {
+      allow get, list: if isSignedIn();
+      allow create: if isAdmin() && isValidId(datasetId) && isValidCSVDataset(request.resource.data);
+      allow update: if isAdmin() && isValidId(datasetId) && isValidCSVDataset(request.resource.data);
+      allow delete: if isAdmin() && isValidId(datasetId);
+    }
+
+    // -------------------------------------------------------------------------
+    // 3. Search History Audit Trail (/search_history/{historyId})
+    // - Authenticated users can create search history records and read recent logs.
+    // - ONLY Admins can delete history logs.
+    // -------------------------------------------------------------------------
+    match /search_history/{historyId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(historyId) && isValidSearchHistory(request.resource.data);
+      allow update: if isAdmin() && isValidId(historyId);
+      allow delete: if isAdmin() && isValidId(historyId);
+    }
+
+    // -------------------------------------------------------------------------
+    // 4. Visitor Statistics Counters (/visitor_stats/{statId})
+    // - Authenticated users can read and increment visit statistics.
+    // -------------------------------------------------------------------------
+    match /visitor_stats/{statId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(statId);
+      allow delete: if isAdmin() && isValidId(statId);
+    }
+
+    // -------------------------------------------------------------------------
+    // 5. User Profiles and RBAC Role Management (/users/{userId})
+    // - Users can read and update their own profiles.
+    // - Normal users cannot self-assign role = "admin" (escalation guard).
+    // - Admins can read and manage any user profile.
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if (isOwner(userId) && (!('role' in request.resource.data) || request.resource.data.role != 'admin')) || isAdmin();
+      allow update: if (isOwner(userId) && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role)) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // 6. Admin Designation Registry (/admins/{adminId})
+    // - Authenticated users can check admin status.
+    // - ONLY Admins can write or modify admin designations.
+    // -------------------------------------------------------------------------
+    match /admins/{adminId} {
+      allow get: if isSignedIn();
+      allow list, create, update, delete: if isAdmin();
+    }
+  }
+}
