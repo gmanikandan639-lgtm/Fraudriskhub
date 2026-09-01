@@ -2,10 +2,11 @@ import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import {
   getAuth,
   Auth,
-  signInAnonymously,
+  GoogleAuthProvider,
+  signInWithPopup,
+  signOut as fbSignOut,
   onAuthStateChanged,
   User as FirebaseUser,
-  signOut as fbSignOut,
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -40,37 +41,38 @@ import {
   LiveSyncStatus,
 } from '../types';
 
-// Firebase configuration object with environment variable support for Vercel / custom deployments
+// Firebase configuration object with environment variable support
 export const firebaseConfig = {
   projectId:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) ||
     firebaseConfigJson.projectId ||
-    'hunter-vercel',
+    'winter-variety-mq6d2',
   appId:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) ||
     firebaseConfigJson.appId ||
-    '1:870928047037:web:ce1c242ccfe17ec60a50d4',
+    '1:463654405089:web:53c57716095f606497c8a0',
   apiKey:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) ||
     firebaseConfigJson.apiKey ||
-    'AIzaSyDgKesIikqU-8nOfHvEJbK1tCBVEkRAeXQ',
+    'AIzaSyDGcPURwYhKIB8EFy1p0dLc2akd-sch6PQ',
   authDomain:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) ||
     firebaseConfigJson.authDomain ||
-    'hunter-vercel.firebaseapp.com',
+    'winter-variety-mq6d2.firebaseapp.com',
   storageBucket:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) ||
     firebaseConfigJson.storageBucket ||
-    'hunter-vercel.firebasestorage.app',
+    'winter-variety-mq6d2.firebasestorage.app',
   messagingSenderId:
     (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) ||
     firebaseConfigJson.messagingSenderId ||
-    '870928047037',
+    '463654405089',
 };
 
 const customDatabaseId =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_DATABASE_ID) ||
-  firebaseConfigJson.firestoreDatabaseId;
+  firebaseConfigJson.firestoreDatabaseId ||
+  'ai-studio-fraudriskhub-1bc1949c-52b4-459b-8fe4-430de62c4958';
 
 // Initialize Firebase App singleton
 export const app: FirebaseApp =
@@ -78,6 +80,8 @@ export const app: FirebaseApp =
 
 // Initialize Firebase Auth
 export const auth: Auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // Initialize Cloud Firestore with specified database ID
 let firestoreInstance: Firestore;
@@ -96,6 +100,70 @@ export const db: Firestore = firestoreInstance;
 
 // Initialize Firebase Storage
 export const storage: FirebaseStorage = getStorage(app);
+
+// Authentication helper: Google Sign-In Exclusively
+export const signInWithGoogle = async (): Promise<FirebaseUser> => {
+  const cred = await signInWithPopup(auth, googleProvider);
+  if (cred.user) {
+    await syncUserProfileInFirestore(cred.user);
+  }
+  return cred.user;
+};
+
+// Sign Out
+export const logOut = async (): Promise<void> => {
+  await fbSignOut(auth);
+};
+
+// Synchronize User profile & check admin in Firestore
+export const syncUserProfileInFirestore = async (user: FirebaseUser): Promise<{ isAdmin: boolean; role: string }> => {
+  try {
+    const userDocRef = doc(db, 'users', user.uid);
+    const now = new Date().toISOString();
+    const isAdminEmail = user.email === 'gmanikandan639@gmail.com' || user.email?.endsWith('@hunter.internal');
+
+    const snap = await getDoc(userDocRef);
+    let role = isAdminEmail ? 'admin' : 'user';
+
+    if (snap.exists()) {
+      const data = snap.data();
+      if (data.role) role = data.role;
+    }
+
+    await setDoc(
+      userDocRef,
+      {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName || user.email?.split('@')[0] || 'User',
+        photoURL: user.photoURL || '',
+        role,
+        lastLogin: now,
+      },
+      { merge: true }
+    );
+
+    if (role === 'admin') {
+      const adminDocRef = doc(db, 'admins', user.uid);
+      await setDoc(
+        adminDocRef,
+        {
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          role: 'admin',
+          assignedAt: now,
+        },
+        { merge: true }
+      );
+    }
+
+    return { isAdmin: role === 'admin', role };
+  } catch (err) {
+    console.warn('Sync user profile note:', err);
+    return { isAdmin: user.email === 'gmanikandan639@gmail.com', role: user.email === 'gmanikandan639@gmail.com' ? 'admin' : 'user' };
+  }
+};
 
 // Global live sync status subscribers
 type SyncStatusCallback = (status: LiveSyncStatus) => void;
@@ -142,22 +210,12 @@ export const ensureAuth = (): Promise<FirebaseUser | null> => {
       return;
     }
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe();
       if (user) {
-        unsubscribe();
         setGlobalSyncStatus('connected');
         resolve(user);
       } else {
-        signInAnonymously(auth)
-          .then((cred) => {
-            unsubscribe();
-            setGlobalSyncStatus('connected');
-            resolve(cred.user);
-          })
-          .catch((err) => {
-            console.warn('Anonymous sign-in note:', err);
-            unsubscribe();
-            resolve(null);
-          });
+        resolve(null);
       }
     });
   });

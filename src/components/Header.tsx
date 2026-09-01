@@ -25,6 +25,7 @@ interface HeaderProps {
   recordCount?: number;
   isDemoData?: boolean;
   adminSession: AdminSession | null;
+  googleUser?: any | null;
   onLogout: () => void;
   visitorStats?: VisitorStats;
   liveSyncStatus?: LiveSyncStatus;
@@ -36,6 +37,7 @@ export const Header: React.FC<HeaderProps> = ({
   activePage,
   onSelectPage,
   adminSession,
+  googleUser,
   onLogout,
   visitorStats,
   liveSyncStatus = 'connected',
@@ -105,8 +107,59 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
 
-            {/* Admin Profile Pill / Login Action */}
-            {adminSession?.isAuthenticated ? (
+            {/* Google User Profile & Admin Badge / Sign Out */}
+            {googleUser ? (
+              <div className="flex items-center gap-2">
+                <div
+                  className="flex items-center gap-2 p-1.5 sm:px-3 sm:py-1.5 rounded-full sm:rounded-xl bg-slate-50 border border-slate-200/90 text-left"
+                  title={`Signed in as: ${googleUser.email || googleUser.displayName || 'Google User'}`}
+                >
+                  {googleUser.photoURL ? (
+                    <img
+                      src={googleUser.photoURL}
+                      alt={googleUser.displayName || 'User'}
+                      className="w-7 h-7 rounded-full object-cover border border-slate-300"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
+                      {(googleUser.displayName || googleUser.email || 'U')[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="hidden sm:block">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs font-bold text-slate-900 max-w-[120px] truncate">
+                        {googleUser.displayName || googleUser.email?.split('@')[0] || 'Google User'}
+                      </span>
+                      <CheckCircle className="w-3 h-3 text-emerald-600 fill-emerald-100 shrink-0" />
+                    </div>
+                    <span className="text-[10px] font-semibold text-indigo-600 block -mt-0.5">
+                      {adminSession?.isAuthenticated ? 'Admin' : 'Google Auth'}
+                    </span>
+                  </div>
+                </div>
+
+                {adminSession?.isAuthenticated && (
+                  <button
+                    id="admin-dashboard-btn"
+                    onClick={() => onSelectPage('admin')}
+                    className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition-colors cursor-pointer"
+                  >
+                    <LayoutDashboard className="w-3.5 h-3.5" />
+                    <span>Admin</span>
+                  </button>
+                )}
+
+                <button
+                  id="header-logout-btn"
+                  onClick={onLogout}
+                  className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+                  title="Sign Out of Google"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : adminSession?.isAuthenticated ? (
               <div className="flex items-center gap-1.5">
                 <button
                   id="admin-profile-btn"

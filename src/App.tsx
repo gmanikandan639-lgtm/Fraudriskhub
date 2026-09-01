@@ -32,8 +32,11 @@ import { UserSubmitIdentifierModal } from './components/UserSubmitIdentifierModa
 import { ReplaceConfirmModal } from './components/ReplaceConfirmModal';
 import { ClearConfirmModal } from './components/ClearConfirmModal';
 import { ToastNotification, ToastMessage } from './components/ToastNotification';
+import { GoogleAuthGate } from './components/GoogleAuthGate';
 import { BRAND } from './assets/branding';
 import {
+  auth,
+  logOut,
   initAuth,
   subscribeToManualHunterRecords,
   addManualHunterRecordToFirestore,
@@ -50,11 +53,15 @@ import {
   incrementVisitorStatsInFirestore,
   subscribeToLiveSyncStatus,
   syncAdminUserRoleInFirestore,
+  syncUserProfileInFirestore,
 } from './lib/firebase';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 
 export default function App() {
   const [activePage, setActivePage] = useState<ActiveNavPage>('search');
   const [liveSyncStatus, setLiveSyncStatus] = useState<LiveSyncStatus>('connected');
+  const [googleUser, setGoogleUser] = useState<FirebaseUser | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
   // Admin Session State with SessionStorage persistence
   const [adminSession, setAdminSession] = useState<AdminSession | null>(() => {
@@ -68,6 +75,32 @@ export default function App() {
     }
     return null;
   });
+
+  // Listen to Google Authentication state exclusively
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setGoogleUser(user);
+        const { isAdmin } = await syncUserProfileInFirestore(user);
+        if (isAdmin || user.email === 'gmanikandan639@gmail.com') {
+          setAdminSession({
+            isAuthenticated: true,
+            username: user.email || 'Admin',
+            name: user.displayName || 'Manikandan',
+            role: 'Administrator',
+            system: 'Hunter Risk Management',
+            loginTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            token: user.uid,
+          });
+        }
+      } else {
+        setGoogleUser(null);
+      }
+      setIsAuthChecking(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Initial Preloaded Demo Data (CSV Dataset)
   const initial = useMemo(() => getInitialDemoData(), []);
@@ -398,14 +431,20 @@ export default function App() {
     });
   };
 
-  // Handle Admin Logout
-  const handleLogout = () => {
+  // Handle User & Admin Logout (Google Sign-Out)
+  const handleLogout = async () => {
+    try {
+      await logOut();
+    } catch (e) {
+      console.warn('Logout note:', e);
+    }
+    setGoogleUser(null);
     setAdminSession(null);
     setActivePage('search');
     triggerToast({
       type: 'info',
-      title: 'Admin Logged Out',
-      message: 'Your administrator session has been securely terminated.',
+      title: 'Signed Out',
+      message: 'You have been signed out from Google.',
     });
   };
 
@@ -1063,6 +1102,36 @@ export default function App() {
     });
   };
 
+  // 1. Initial Authentication Checking State
+  if (isAuthChecking) {
+    return (
+      <div
+        id="auth-loading-screen"
+        className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-100 selection:bg-red-600 selection:text-white"
+      >
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl overflow-hidden bg-slate-900 border border-slate-700 shadow-2xl p-1 animate-pulse">
+            <img
+              src={BRAND.shieldIcon}
+              alt="Fraud Risk Hub"
+              className="w-full h-full object-cover rounded-xl"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
+            <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            <span>Verifying Google Authentication...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Google Authentication Gate: User must authenticate with Google before accessing the app
+  if (!googleUser) {
+    return <GoogleAuthGate onAuthenticated={(user) => setGoogleUser(user)} />;
+  }
+
   return (
     <div
       id="app-root"
@@ -1075,6 +1144,7 @@ export default function App() {
         recordCount={combinedRecords.length}
         isDemoData={csvMetadata.isDemo}
         adminSession={adminSession}
+        googleUser={googleUser}
         onLogout={handleLogout}
         visitorStats={visitorStats}
         liveSyncStatus={liveSyncStatus}
