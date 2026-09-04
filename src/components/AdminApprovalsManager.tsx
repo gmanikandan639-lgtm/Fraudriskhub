@@ -422,21 +422,14 @@ export const AdminApprovalsManager: React.FC<AdminApprovalsManagerProps> = ({
                     </span>
                   </div>
 
-                  {/* Submitter & Timestamp Attribution */}
+                  {/* Submission Timestamp Attribution */}
                   <div className="flex items-center gap-2 text-xs text-slate-500">
-                    <User className="w-3.5 h-3.5 text-slate-400" />
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
                     <span>
-                      Submitted by{' '}
-                      <strong className="text-slate-800 font-semibold">
-                        {sub.submittedBy?.name || sub.createdBy || 'Staff User'}
-                      </strong>
-                      {sub.submittedBy?.department && (
-                        <span className="text-slate-500"> ({sub.submittedBy.department})</span>
-                      )}
-                    </span>
-                    <span>•</span>
-                    <span className="font-mono text-[11px]">
-                      {formatDate(sub.submittedAt || sub.createdAt)}
+                      Submitted on{' '}
+                      <span className="font-mono text-[11px] font-semibold text-slate-700">
+                        {formatDate(sub.submittedAt || sub.createdAt)}
+                      </span>
                     </span>
                   </div>
                 </div>
@@ -444,116 +437,41 @@ export const AdminApprovalsManager: React.FC<AdminApprovalsManagerProps> = ({
                 {/* Main Card Content */}
                 <div className="p-5 space-y-4">
                   {/* Grid: Core Record Data */}
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-                    {/* Identifier & Bank Information (Col-7) */}
-                    <div className="md:col-span-7 space-y-3">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
-                          Hunter Identifier Number
+                  <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
+                        Hunter Identifier Number
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-base font-black text-slate-900 tracking-tight">
+                          {sub.hunterId}
                         </span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-base font-black text-slate-900 tracking-tight">
-                            {sub.hunterId}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleCopy(sub.hunterId, sub.id)}
-                            className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                            title="Copy Hunter ID"
-                          >
-                            {copiedId === sub.id ? (
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            ) : (
-                              <Copy className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(sub.hunterId, sub.id)}
+                          className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
+                          title="Copy Hunter ID"
+                        >
+                          {copiedId === sub.id ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
                       </div>
-
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                            Bank / NBFC Name
-                          </span>
-                          <span className="font-bold text-indigo-950 flex items-center gap-1.5 mt-0.5">
-                            <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                            {sub.bankName}
-                          </span>
-                        </div>
-
-                        <div>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                            Status / Classification
-                          </span>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-extrabold bg-amber-50 text-amber-800 border border-amber-200 mt-0.5">
-                            {sub.status || 'Suspicious Activity'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Associated Identifiers */}
-                      {(sub.pan || sub.mobile || sub.accountNumber) && (
-                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 grid grid-cols-3 gap-2 text-xs">
-                          {sub.pan && (
-                            <div>
-                              <span className="text-[10px] font-semibold text-slate-400 block">
-                                PAN / Tax ID
-                              </span>
-                              <span className="font-mono font-bold text-slate-800">{sub.pan}</span>
-                            </div>
-                          )}
-                          {sub.mobile && (
-                            <div>
-                              <span className="text-[10px] font-semibold text-slate-400 block">
-                                Mobile
-                              </span>
-                              <span className="font-mono font-bold text-slate-800">
-                                {sub.mobile}
-                              </span>
-                            </div>
-                          )}
-                          {sub.accountNumber && (
-                            <div>
-                              <span className="text-[10px] font-semibold text-slate-400 block">
-                                Account No.
-                              </span>
-                              <span className="font-mono font-bold text-slate-800">
-                                {sub.accountNumber}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
 
-                    {/* Fraud Context & Submitter Notes (Col-5) */}
-                    <div className="md:col-span-5 space-y-3 bg-slate-50/60 p-3.5 rounded-xl border border-slate-200/80">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                          Fraud Remarks / Justification
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">
+                        Bank / NBFC Name
+                      </span>
+                      <div className="font-bold text-indigo-950 flex items-center gap-2 text-sm">
+                        <Building2 className="w-4 h-4 text-indigo-600 shrink-0" />
+                        <span>{sub.bankName}</span>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
+                          {sub.orgType || 'Bank'}
                         </span>
-                        <p className="text-xs text-slate-800 font-medium leading-relaxed bg-white p-2.5 rounded-lg border border-slate-200">
-                          {sub.remarks || sub.notes || 'No remarks provided.'}
-                        </p>
                       </div>
-
-                      {sub.submittedBy?.notes && (
-                        <div>
-                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
-                            Submitter Note to Administrator
-                          </span>
-                          <p className="text-xs text-indigo-900 font-medium bg-indigo-50/70 p-2 rounded-lg border border-indigo-100">
-                            "{sub.submittedBy.notes}"
-                          </p>
-                        </div>
-                      )}
-
-                      {sub.submittedBy?.email && (
-                        <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                          <Mail className="w-3 h-3 text-slate-400" />
-                          <span>Contact: {sub.submittedBy.email}</span>
-                        </div>
-                      )}
                     </div>
                   </div>
 
@@ -572,16 +490,8 @@ export const AdminApprovalsManager: React.FC<AdminApprovalsManagerProps> = ({
                             Original Record
                           </span>
                           <div>
-                            <strong>Bank:</strong> {sub.previousRecordSnapshot.bankName || '—'}
+                            <strong>Bank / NBFC:</strong> {sub.previousRecordSnapshot.bankName || '—'}
                           </div>
-                          <div>
-                            <strong>Status:</strong> {sub.previousRecordSnapshot.status || '—'}
-                          </div>
-                          {sub.previousRecordSnapshot.pan && (
-                            <div>
-                              <strong>PAN:</strong> {sub.previousRecordSnapshot.pan}
-                            </div>
-                          )}
                         </div>
 
                         {/* Proposed Update */}
@@ -590,19 +500,9 @@ export const AdminApprovalsManager: React.FC<AdminApprovalsManagerProps> = ({
                             Proposed User Values
                           </span>
                           <div>
-                            <strong>Bank:</strong>{' '}
+                            <strong>Bank / NBFC:</strong>{' '}
                             <span className="text-indigo-900 font-bold">{sub.bankName}</span>
                           </div>
-                          <div>
-                            <strong>Status:</strong>{' '}
-                            <span className="text-indigo-900 font-bold">{sub.status}</span>
-                          </div>
-                          {sub.pan && (
-                            <div>
-                              <strong>PAN:</strong>{' '}
-                              <span className="text-indigo-900 font-mono font-bold">{sub.pan}</span>
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>

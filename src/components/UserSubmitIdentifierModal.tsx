@@ -47,18 +47,11 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
     initialRecord ? 'update' : mode
   );
 
-  // Form Fields
+  // Form Fields - Only Hunter ID, Institution Classification (Bank/NBFC), and Bank/NBFC Name
   const [hunterId, setHunterId] = useState('');
   const [orgType, setOrgType] = useState<UserOrgTypeOption>('Bank');
   const [bankName, setBankName] = useState('');
   const [customBank, setCustomBank] = useState('');
-  const [status, setStatus] = useState('Active Reference');
-  const [remarks, setRemarks] = useState('');
-  const [submitterName, setSubmitterName] = useState('');
-  const [submitterEmail, setSubmitterEmail] = useState('');
-  const [accountNumber, setAccountNumber] = useState('');
-  const [mobile, setMobile] = useState('');
-  const [pan, setPan] = useState('');
 
   // UI States
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -90,28 +83,12 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
           setBankName('');
           setCustomBank('');
         }
-
-        setStatus(initialRecord.status || 'Active Reference');
-        setRemarks(
-          initialRecord.remarks ||
-            initialRecord.notes ||
-            initialRecord.rawColumns?.['Remarks'] ||
-            ''
-        );
-        setAccountNumber(initialRecord.rawColumns?.['Account Number'] || '');
-        setMobile(initialRecord.rawColumns?.['Mobile'] || '');
-        setPan(initialRecord.rawColumns?.['PAN'] || '');
       } else {
         setSubmissionType('new');
         setHunterId('');
         setOrgType('Bank');
         setBankName('');
         setCustomBank('');
-        setStatus('Active Reference');
-        setRemarks('');
-        setAccountNumber('');
-        setMobile('');
-        setPan('');
       }
     }
   }, [isOpen, initialRecord, uniqueBanks]);
@@ -124,8 +101,6 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
 
     const cleanHunterId = hunterId.trim();
     const effectiveBank = (bankName === '__NEW__' ? customBank : bankName).trim();
-    const cleanRemarks = remarks.trim();
-    const cleanSubmitter = submitterName.trim() || 'Portal User';
 
     if (!cleanHunterId) {
       setError('Please enter a valid Hunter Identifier Number.');
@@ -146,20 +121,16 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
 
     try {
       const isUpdate = submissionType === 'update';
+      const recordStatus = initialRecord?.status || 'Active Reference';
       const submissionId = await submitUserHunterRecordToFirestore({
         hunterId: cleanHunterId,
         bankName: effectiveBank,
         orgType,
         name: cleanHunterId,
-        status: status || 'Pending Verification',
-        remarks: cleanRemarks || (isUpdate ? 'Proposed update to identifier details' : 'Submitted by user for verification.'),
-        notes: cleanRemarks,
-        accountNumber: accountNumber.trim(),
-        mobile: mobile.trim(),
-        pan: pan.trim().toUpperCase(),
+        status: recordStatus,
+        remarks: isUpdate ? 'Proposed update to identifier details' : 'Contributed by user for reference.',
         submittedBy: {
-          name: cleanSubmitter,
-          email: submitterEmail.trim() || undefined,
+          name: 'Portal User',
         },
         isUpdateRequest: isUpdate,
         targetRecordId: initialRecord?.id || undefined,
@@ -169,7 +140,6 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
               bankName: initialRecord.bankName,
               name: initialRecord.name,
               status: initialRecord.status,
-              remarks: initialRecord.remarks || initialRecord.notes || '',
               rawColumns: initialRecord.rawColumns || {},
             }
           : undefined,
@@ -179,12 +149,7 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
           'Type': orgType,
           'Bank/NBFC Name': effectiveBank,
           'Organisation Name': effectiveBank,
-          'Status': status || 'Active Reference',
-          'Remarks': cleanRemarks || (isUpdate ? 'Proposed update' : 'New submission'),
-          'Submitted By': cleanSubmitter,
-          ...(accountNumber.trim() ? { 'Account Number': accountNumber.trim() } : {}),
-          ...(mobile.trim() ? { 'Mobile': mobile.trim() } : {}),
-          ...(pan.trim() ? { 'PAN': pan.trim().toUpperCase() } : {}),
+          'Status': recordStatus,
           ...(initialRecord?.rawColumns || {}),
         },
       });
@@ -196,19 +161,14 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
         bankName: effectiveBank,
         orgType,
         name: cleanHunterId,
-        status: status || 'Active Reference',
-        remarks: cleanRemarks || (isUpdate ? 'Proposed update to identifier details' : 'Submitted by user for verification.'),
-        notes: cleanRemarks,
-        accountNumber: accountNumber.trim(),
-        mobile: mobile.trim(),
-        pan: pan.trim().toUpperCase(),
-        createdBy: `User: ${cleanSubmitter}`,
+        status: recordStatus,
+        remarks: isUpdate ? 'Proposed update to identifier details' : 'Contributed by user for reference.',
+        createdBy: 'Portal User',
         createdAt: now,
         updatedAt: now,
         approvalStatus: 'pending',
         submittedBy: {
-          name: cleanSubmitter,
-          email: submitterEmail.trim() || undefined,
+          name: 'Portal User',
         },
         submittedAt: now,
         isUpdateRequest: isUpdate,
@@ -219,7 +179,6 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
               bankName: initialRecord.bankName,
               name: initialRecord.name,
               status: initialRecord.status,
-              remarks: initialRecord.remarks || initialRecord.notes || '',
               rawColumns: initialRecord.rawColumns || {},
             }
           : undefined,
@@ -229,12 +188,7 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
           'Type': orgType,
           'Bank/NBFC Name': effectiveBank,
           'Organisation Name': effectiveBank,
-          'Status': status || 'Active Reference',
-          'Remarks': cleanRemarks,
-          'Submitted By': cleanSubmitter,
-          ...(accountNumber.trim() ? { 'Account Number': accountNumber.trim() } : {}),
-          ...(mobile.trim() ? { 'Mobile': mobile.trim() } : {}),
-          ...(pan.trim() ? { 'PAN': pan.trim().toUpperCase() } : {}),
+          'Status': recordStatus,
           ...(initialRecord?.rawColumns || {}),
         },
       };
@@ -330,10 +284,6 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
                   {bankName === '__NEW__' ? customBank : bankName} ({orgType})
                 </span>
               </div>
-              <div className="flex justify-between items-center pb-2 border-b border-slate-200">
-                <span className="text-slate-500 font-medium">Status:</span>
-                <span className="font-semibold text-slate-800">{status}</span>
-              </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-500 font-medium">Workflow:</span>
                 <span className="inline-flex items-center gap-1 font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
@@ -351,7 +301,6 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
                   setHunterId('');
                   setBankName('');
                   setCustomBank('');
-                  setRemarks('');
                 }}
                 className="py-2.5 px-4 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
               >
@@ -523,90 +472,6 @@ export const UserSubmitIdentifierModal: React.FC<UserSubmitIdentifierModalProps>
                   className="w-full mt-1.5 px-3.5 py-2.5 text-xs font-semibold text-slate-900 bg-white border border-indigo-400 rounded-xl focus:ring-2 focus:ring-indigo-100 outline-hidden"
                 />
               )}
-            </div>
-
-            {/* Category 4: Risk Status & Remarks */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-              <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-800">
-                  Risk Status
-                </label>
-                <input
-                  type="text"
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  placeholder="e.g. Suspect Fraud, RCU Match, Active Reference"
-                  className="w-full px-3.5 py-2.5 text-xs font-semibold text-slate-900 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-indigo-600 outline-hidden"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-xs font-bold text-slate-800">
-                  Submitter Name (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={submitterName}
-                  onChange={(e) => setSubmitterName(e.target.value)}
-                  placeholder="e.g. Branch Officer, RCU Analyst"
-                  className="w-full px-3.5 py-2.5 text-xs font-semibold text-slate-900 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-indigo-600 outline-hidden"
-                />
-              </div>
-            </div>
-
-            {/* Category 5: Remarks / Reason for update */}
-            <div className="space-y-1 pt-2 border-t border-slate-100">
-              <label className="block text-xs font-bold text-slate-800">
-                Remarks / Update Reason
-              </label>
-              <textarea
-                rows={2}
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                placeholder="Explain the update reason or details (e.g. duplicate CIF identified, RCU finding, updated classification)..."
-                className="w-full px-3.5 py-2 text-xs text-slate-900 bg-slate-50 border border-slate-300 rounded-xl focus:bg-white focus:border-indigo-600 outline-hidden resize-none"
-              />
-            </div>
-
-            {/* Optional Additional Financial Identifiers */}
-            <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100">
-              <div className="space-y-1">
-                <label className="block text-[11px] font-bold text-slate-600">
-                  PAN (Optional)
-                </label>
-                <input
-                  type="text"
-                  maxLength={10}
-                  value={pan}
-                  onChange={(e) => setPan(e.target.value.toUpperCase())}
-                  placeholder="ABCDE1234F"
-                  className="w-full px-2.5 py-1.5 text-xs font-mono font-bold text-slate-800 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:border-indigo-600 outline-hidden"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="block text-[11px] font-bold text-slate-600">
-                  Mobile (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={mobile}
-                  onChange={(e) => setMobile(e.target.value)}
-                  placeholder="9876543210"
-                  className="w-full px-2.5 py-1.5 text-xs font-mono text-slate-800 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:border-indigo-600 outline-hidden"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="block text-[11px] font-bold text-slate-600">
-                  Account No (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={accountNumber}
-                  onChange={(e) => setAccountNumber(e.target.value)}
-                  placeholder="50100..."
-                  className="w-full px-2.5 py-1.5 text-xs font-mono text-slate-800 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:border-indigo-600 outline-hidden"
-                />
-              </div>
             </div>
 
             {/* Modal Actions */}

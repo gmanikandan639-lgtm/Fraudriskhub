@@ -921,16 +921,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <tr className="bg-slate-100/80 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
                           <th className="py-3 px-4">Hunter Identifier</th>
                           <th className="py-3 px-4">Bank / NBFC Name</th>
-                          <th className="py-3 px-4">Fraud Status</th>
                           <th className="py-3 px-4">Approval State</th>
-                          <th className="py-3 px-4">Remarks</th>
-                          <th className="py-3 px-4">Origin / Submitter</th>
                           <th className="py-3 px-4 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200">
                         {paginatedManualRecords.map((item) => {
-                          const badge = getStatusBadge(item.status);
                           const isApproved = item.approvalStatus === 'approved' || !item.approvalStatus;
                           const isPending = item.approvalStatus === 'pending';
                           const isRejected = item.approvalStatus === 'rejected';
@@ -948,16 +944,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                                   <span>{item.bankName}</span>
                                 </div>
-                              </td>
-
-                              {/* Status */}
-                              <td className="py-3.5 px-4">
-                                <span
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${badge.bg}`}
-                                >
-                                  <span className={`w-1.5 h-1.5 rounded-full ${badge.dot}`}></span>
-                                  <span>{item.status}</span>
-                                </span>
                               </td>
 
                               {/* Approval State */}
@@ -980,28 +966,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                     Rejected
                                   </span>
                                 )}
-                              </td>
-
-                              {/* Remarks */}
-                              <td className="py-3.5 px-4 max-w-xs truncate text-slate-600">
-                                {item.remarks || item.notes || '—'}
-                              </td>
-
-                              {/* Origin / Submitter */}
-                              <td className="py-3.5 px-4 text-slate-700 text-[11px]">
-                                <div>
-                                  <span className="font-semibold text-slate-900">
-                                    {item.submittedBy?.name || item.createdBy || 'Administrator'}
-                                  </span>
-                                  {item.isUpdateRequest && (
-                                    <span className="ml-1 text-[10px] text-blue-600 font-bold bg-blue-50 px-1.5 py-0.2 rounded-sm border border-blue-200">
-                                      Update
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-[10px] text-slate-400">
-                                  {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
-                                </div>
                               </td>
 
                               {/* Actions: Edit & Delete */}
